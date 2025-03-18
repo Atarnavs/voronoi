@@ -20,10 +20,10 @@ impl Diagram {
     pub fn build(number: u16) -> Diagram {
         let mut diagram = Diagram::new();
         diagram.generate_points(number);
-        diagram.lines.push(vec![0.0, 0.0, 0.0, 1.0]);
-        diagram.lines.push(vec![0.0, 1.0, 1.0, 1.0]);
-        diagram.lines.push(vec![0.0, 0.0, 1.0, 0.0]);
-        diagram.lines.push(vec![1.0, 1.0, 1.0, 0.0]);
+        // diagram.lines.push(vec![0.0, 0.0, 0.0, 1.0]);
+        // diagram.lines.push(vec![0.0, 1.0, 1.0, 1.0]);
+        // diagram.lines.push(vec![0.0, 0.0, 1.0, 0.0]);
+        // diagram.lines.push(vec![1.0, 1.0, 1.0, 0.0]);
         diagram
     }
     pub fn convert_points(&self) -> Vec<Vec<u32>> {
@@ -51,145 +51,164 @@ impl Diagram {
             return;
         }
         let index = thread_rng().gen_range(0..self.points.len());
-        self.diagram.push(self.points.swap_remove(index));
-        if self.diagram.len() < 2 {
+        let point = self.points.swap_remove(index);
+
+        if self.diagram.len() < 1 {
+            self.diagram.push(point);
             return;
         }
-        let last_point = &self.diagram[self.diagram.len() - 1];
-        let mut closest_point = &self.diagram[self.diagram.len() - 2];
-        let mut distance = Diagram::distance(closest_point, last_point);
-        let mut index = 0;
-        let mut index_of_closest_point = 0;
-        for point in self.diagram.iter().take(self.diagram.len() - 2) {
-            let d = Diagram::distance(point, last_point);
-            if d < distance{
-                closest_point = point;
-                distance = d;
-                index_of_closest_point = index;
-            }
-            index += 1;
+        let last_point_put_in = &point;
+        let correction_term = 1e-12;
+        let mut i = 0;
+        self.diagram.sort_by(|point1: &Vec<f64>, point2| Diagram::distance_squared(point1, last_point_put_in).partial_cmp(&Diagram::distance_squared(point2, last_point_put_in)).unwrap());
+        for point in self.diagram.iter() {
+            println!("distance to point{} is: {}", i, Diagram::distance_squared(point, last_point_put_in));
+            i += 1;
         }
-        // Variable names are for the clarity of math first 
-        let BA = vec![closest_point[0] - last_point[0], closest_point[1] - last_point[1]]; // vector
-        let M = vec![last_point[0] + 0.5 * BA[0], last_point[1] + 0.5 * BA[1]]; // midpoint
-        let MO = vec![BA[1] / (Diagram::vec_len(&BA)), -BA[0] / (Diagram::vec_len(&BA))]; // turned pi/2 rad, rescaled to a unit vector.
-        let number_of_points = self.diagram.len();
-        let mut O1O2 = vec![M[0] + MO[0], M[1] + MO[1], M[0] - MO[0], M[1] - MO[1]]; // bisector
-        self.diagram.swap(index_of_closest_point, number_of_points - 2);
-        for line in &self.lines {
-            if (line[3] - line[1]) * MO[0] != MO[1] * (line[2] - line[0]) { // Testing if the lines intersect. No division by 0 possibility this way
-                // finding the intersection point. 
-                let a = O1O2[1] - O1O2[3];
-                let b = O1O2[2] - O1O2[0];
-                let c = line[1] - line[3];
-                let d = line[2] - line[0];
-                let x_I;
-                let y_I;
-                if d == 0.0 { // avoiding division by 0
-                    x_I = (line[3] * d + line[2] * c) / c;
-                    y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
-                }
-                else if c == 0.0 {
-                    y_I = (line[3] * d + line[2] * c) / d;
-                    x_I = (O1O2[3] * b + O1O2[2] * a - y_I * b) / a;
-                }
-                else {
-                    x_I = (b * (O1O2[3] - line[3]) + O1O2[2] * a - line[2] * c * b / d) / (a - c * b / d);
-                    y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
-                }
-                if (O1O2[1] - y_I) * (O1O2[3] - y_I) < 0.0 && (line[1] - y_I) * (line[3] - y_I) < 0.0{ // testing that the intersection lines between the points.
-                    if (M[0] - x_I) * (O1O2[2] - x_I) < 0.0 { // testing which side of the midpoint the intersection is on and cutting off accordingly
-                        O1O2[3] = y_I;
-                        O1O2[2] = x_I;
-                    }
-                    else {
-                        O1O2[1] = y_I;
-                        O1O2[0] = x_I;
-                    }
-                }
-            }
-        }
-        self.lines.push(O1O2);
-        let last_point = self.diagram.last().unwrap();
-        let last_line = self.lines.last().expect("must exist at this point").clone();
-        for point in self.diagram.iter().take(self.diagram.len() - 2) {
-            let BA = vec![point[0] - last_point[0], point[1] - last_point[1]]; // vector
-            let M = vec![last_point[0] + 0.5 * BA[0], last_point[1] + 0.5 * BA[1]]; // midpoint
+        println!("point being put in is : {point:?}");
+        for point in self.diagram.iter() {
+                // Variable names are for the clarity of math first 
+            println!("point considered: {point:?}");
+            let BA = vec![point[0] - last_point_put_in[0], point[1] - last_point_put_in[1]]; // vector
+            // let d = Diagram::vec_len_squared(&BA);
+            let M = vec![last_point_put_in[0] + 0.5 * BA[0], last_point_put_in[1] + 0.5 * BA[1]]; // midpoint
             let MO = vec![BA[1] / (Diagram::vec_len(&BA)), -BA[0] / (Diagram::vec_len(&BA))]; // turned pi/2 rad, rescaled to a unit vector.
-            // let MO = vec![BA[1], -BA[0]];
-            let mut O1O2 = vec![M[0] + MO[0], M[1] + MO[1], M[0] - MO[0], M[1] - MO[1]]; // bisector
-            // finding the intersection point with the last added line;
-            let a = O1O2[1] - O1O2[3];
-            let b = O1O2[2] - O1O2[0];
-            let c = last_line[1] - last_line[3];
-            let d = last_line[2] - last_line[0];
-            let x_I;
-            let y_I;
-            if d == 0.0 { // avoiding division by 0
-                x_I = (last_line[3] * d + last_line[2] * c) / c;
-                y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
-            }
-            else if c == 0.0 {
-                y_I = (last_line[3] * d + last_line[2] * c) / d;
-                x_I = (O1O2[3] * b + O1O2[2] * a - y_I * b) / a;
+            // let number_of_points = self.diagram.len();
+            let O1O2 = vec![M[0] + MO[0], M[1] + MO[1], M[0] - MO[0], M[1] - MO[1]]; // bisector
+            // self.diagram.swap(index_of_closest_point, number_of_points - 2);
+            let ndy = O1O2[1] - O1O2[3];
+            let dx = O1O2[2] - O1O2[0];
+            let T_i = vec![0.0, O1O2[3] + (O1O2[2] * ndy) / dx]; // y intercept;
+            let W_i = vec![1.0, O1O2[3] + ndy * (O1O2[2] - 1.0) / dx]; // x = 1 intercept;
+            let U_i = vec![O1O2[2] + dx * (O1O2[3]) / ndy, 0.0]; // x intercept
+            let V_i = vec![O1O2[2] + dx * (O1O2[3] - 1.0) / ndy, 1.0]; // y = 1 intercept
+            let S: &Vec<f64>;
+            let E: &Vec<f64>;
+            
+            if T_i[1] > 0.0 && T_i[1] < 1.0 {S = &T_i}
+            else if U_i[0] > 0.0 && U_i[0] < 1.0 {
+                S = &U_i;            
             }
             else {
-                x_I = (b * (O1O2[3] - last_line[3]) + O1O2[2] * a - last_line[2] * c * b / d) / (a - c * b / d);
-                y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
+                S = &V_i;
             }
-            if (x_I > last_line[0] - 0.001 && x_I < last_line[0] + 0.001 && y_I < last_line[1] + 0.001 && y_I > last_line[1] - 0.001) || (x_I > last_line[2] - 0.001 && x_I < last_line[2] + 0.001 && y_I < last_line[3] + 0.001 && y_I > last_line[3] - 0.01) { // if the line intersects the last added line at the endpoint
-                for line in self.lines.iter().take(self.lines.len() - 1) {
-                    if (line[3] - line[1]) * MO[0] != MO[1] * (line[2] - line[0]) { // Testing if the lines intersect. No division by 0 possibility this way
-                        // finding the intersection point. 
-                        let a = O1O2[1] - O1O2[3];
-                        let b = O1O2[2] - O1O2[0];
-                        let c = line[1] - line[3];
-                        let d = line[2] - line[0];
-                        let x_I;
-                        let y_I;
-                        if d == 0.0 { // avoiding division by 0
-                            x_I = (line[3] * d + line[2] * c) / c;
-                            y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
-                        }
-                        else if c == 0.0 {
-                            y_I = (line[3] * d + line[2] * c) / d;
-                            x_I = (O1O2[3] * b + O1O2[2] * a - y_I * b) / a;
-                        }
-                        else {
-                            x_I = (b * (O1O2[3] - line[3]) + O1O2[2] * a - line[2] * c * b / d) / (a - c * b / d);
-                            y_I = (O1O2[3] * b + O1O2[2] * a - x_I * a) / b;
-                        }
-                        if (O1O2[1] - y_I) * (O1O2[3] - y_I) < 0.0 && (line[1] - y_I) * (line[3] - y_I) < 0.0{ // testing that the intersection lines between the points.
-                            if (M[0] - x_I) * (O1O2[2] - x_I) < 0.0 { // testing which side of the midpoint the intersection is on and cutting off accordingly
-                                O1O2[3] = y_I;
-                                O1O2[2] = x_I;
-                            }
-                            else {
-                                O1O2[1] = y_I;
-                                O1O2[0] = x_I;
-                            }
-                        }
-                    }
+
+            if W_i[1] > 0.0 && W_i[1] < 1.0 {E = &W_i}
+            else if V_i[0] > 0.0 && V_i[0] < 1.0 {
+                E = &V_i;            
+            }
+            else {
+                E = &U_i;
+            }
+            // up to this works
+            let mut SE = vec![S[0], S[1], E[0], E[1], M[0], M[1]];
+            println!("SE is: {SE:?}");
+            for line in self.lines.iter() { // systematically cutting off the bisector at the intectpts with other lines
+                println!("line intercected is: {line:?}");
+                if SE[0] == SE[2] && SE[1] == SE[3] {
+                    break;
                 }
-                self.lines.push(O1O2);
+                let ndy = SE[1] - SE[3];
+                let dx = SE[2] - SE[0];
+                let lndy = line[1] - line[3];
+                let ldx = line[2] - line[0];
+                let x_I = (dx * (SE[3] - line[3]) + ndy * SE[2] - line[2] * lndy * dx / ldx) / (ndy - lndy * dx / ldx); // intercept between the new line and one of the existing ones
+                let y_I = SE[3] + ndy * (SE[2] - x_I) / dx; // y component of the intercept
+                println!("x_I is {x_I}");
+                println!("y_I is {y_I}");
+                let x_Ml = x_I;
+                let y_Ml = y_I;
+                let x_p = x_Ml + (last_point_put_in[1] - line[5]);
+                let y_p = y_Ml - (last_point_put_in[0] - line[4]);
+                let dy = y_p - y_Ml;
+                let dx = x_p - x_Ml;
+                // println!("line intercected is {line:?}");
+                let line_eqn = |x:f64, y:f64| (y - y_Ml) * dx - (x - x_Ml) * dy < 0.0;
+                let mut S_n = vec![SE[0], SE[1]];
+                if line_eqn(S_n[0], S_n[1]) != line_eqn(last_point_put_in[0], last_point_put_in[1]) {
+                    S_n = vec![SE[2], SE[3]];
+                }
+                let mut x_E_n = x_I;
+                let mut y_E_n = y_I;
+                if ((x_I - line[0]).abs() + (x_I - line[2]).abs() - ldx.abs()).abs() > correction_term 
+                || ((x_I - SE[0]).abs() + (x_I - SE[2]).abs() - dx.abs()).abs() > correction_term {
+                    x_E_n = E[0];
+                    y_E_n = E[1];
+                }
+                println!("x_E_n is: {x_E_n}\ny_E_n is: {y_E_n}");
+                // if ()
+                SE = vec![S_n[0], S_n[1], x_E_n, y_E_n, M[0], M[1]];
+                println!("SE is: {SE:?}");
+            }
+            // at this point, there should be at most two intercepts lying on the line being drawn: the endpoints
+            let mut i = 0;
+            let mut remove_index: isize = -1;
+            for line in self.lines.iter_mut() { // adjusting the other lines
+                println!("line adjusted is: {line:?}");
+                // let x_op = point[0] + 2.0 * line[4];
+                // let y_op = point[1] + 2.0 * line[5];
+                // if ((point[0] - last_point_put_in[0]).abs() + (x_op - last_point_put_in[0]).abs() - 2.0 * line[4].abs()).abs() < correction_term 
+                // && ((point[1] - last_point_put_in[1]).abs() + (y_op - last_point_put_in[1]).abs() - 2.0 * line[5].abs()).abs() < correction_term {
+                //     remove_index = i;
+                //     continue;
+                // }
+                let x_I; // x component of the intercept
+                let y_I;
+                if ((SE[0] - line[0]) * (line[3] - line[1]) - (line[2] - line[0]) * (SE[1] - line[1])).abs() < correction_term { // if the starting point of the new line lies on the line
+                    x_I = SE[0]; // set the x component of the intercept to the x component of the starting point of the old line
+                    y_I = SE[1];
+                }
+                else if ((SE[2] - line[0]) * (line[3] - line[1]) - (line[2] - line[0]) * (SE[3] - line[1])).abs() < correction_term { // same, but for the ending point of the old line
+                    x_I = SE[2];
+                    y_I = SE[3];
+                }
+                else {
+                    continue; // if there is no intercept, skip the line
+                }
+                if ((line[0] - x_I).abs() + (line[2] - x_I).abs() - (line[0] - line[2]).abs()).abs() > correction_term {
+                    // let D = Diagram::distance_squared(&vec![line[5], line[6]], );
+                    continue; // if the intecept is not on the line segment, skip.
+                }
+                // if SE[0] == line[0]
+                let x_Ml = x_I;
+                let y_Ml = y_I;
+                let x_p = x_Ml + (last_point_put_in[1] - line[5]);
+                let y_p = y_Ml - (last_point_put_in[0] - line[4]);
+                let dy = y_p - y_Ml;
+                let dx = x_p - x_Ml;
+                let line_eqn = |x:f64, y:f64| {(y - y_Ml) * dx - (x - x_Ml) * dy < 0.0};
+                let mut S_nl = vec![line[0], line[1]];
+                if line_eqn(last_point_put_in[0],last_point_put_in[1]) == line_eqn(S_nl[0], S_nl[1]) {
+                    S_nl = vec![line[2], line[3]];
+                }
+                *line = vec![S_nl[0], S_nl[1], x_I, y_I, x_Ml, x_Ml];
+                println!("new line is: {line:?}");
+                i += 1;
+            }
+
+            // if SE[2] >= 0.0 - correction_term && SE[2] <= 1.0 + correction_term && SE[3] >= 0.0 - correction_term && SE[3] <= 1.0 + correction_term && SE[0] >= 0.0 - correction_term && SE[0] <= 1.0 + correction_term && SE[1] >= 0.0 - correction_term && SE[1] <= 1.0 + correction_term {
+            //     self.lines.push(SE);
+            // }
+            if remove_index != -1 {
+                self.lines.swap_remove(remove_index as usize);
+            }
+            if SE[0] != SE[2] && SE[1] != SE[3] {
+                self.lines.push(SE);
             }
         }
-        // for point in self.diagram.iter().take(self.diagram.len() - 1) {
-        //     let BA = vec![point[0] - last_point[0], point[1] - last_point[1]];
-        //     let M = vec![last_point[0] + 0.5 * BA[0], last_point[1] + 0.5 * BA[1]];
-        //     let MO = vec![BA[1], -BA[0]];
-        //     let O1O2 = vec![M[0] + MO[0], M[1] + MO[1], M[0] - MO[0], M[1] - MO[1]];
-        //     self.lines.push(O1O2);
-        // }
+        self.diagram.push(point);
     }
     pub fn calculate_perimeters(&self) -> f64 {
         0.0
     }
-    fn distance(point1: &Vec<f64>, point2: &Vec<f64>) -> f64{
-        f64::sqrt((point1[0] - point2[0]).powi(2) + (point1[1] - point2[1]).powi(2))
+    fn distance_squared(point1: &Vec<f64>, point2: &Vec<f64>) -> f64{
+        (point1[0] - point2[0]).powi(2) + (point1[1] - point2[1]).powi(2)
     }
     fn vec_len(vector: &Vec<f64>) -> f64 {
         (vector[0].powi(2) + vector[1].powi(2)).sqrt()
+    }
+    fn vec_len_squared(vector: &Vec<f64>) -> f64 {
+        vector[0].powi(2) + vector[1].powi(2)
     }
 }
 pub fn count_average_perimeters (points: &Vec<(f64, f64)>) -> f64 {
