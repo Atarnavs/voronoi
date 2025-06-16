@@ -1,19 +1,24 @@
 // use std::{f64::consts::SQRT_2, intrinsics::sqrtf64};
 
+use std::usize;
+
 use rand::{prelude::*, seq::index::sample};
+use log::LevelFilter;
+
 pub mod info;
+
 #[derive(Debug)]
 pub struct Diagram {
     points: Vec<Vec<f64>>,
     diagram: Vec<Vec<f64>>,
-    lines: Vec<Vec<f64>>
+    lines: Vec<Vec<f64>>,
 }
 impl Diagram {
     pub fn new() -> Diagram {
         let diagram = Diagram {
             points: vec![],
             diagram: vec![],
-            lines: vec![]
+            lines: vec![],
         };
         diagram
     }
@@ -46,7 +51,7 @@ impl Diagram {
             self.points.push(vec![rng.gen(), rng.gen()]);
         }
     }
-    pub fn put_next_point_in(&mut self) {
+    pub fn put_next_point_in2(&mut self) {
         if self.points.len() == 0 {
             return;
         }
@@ -54,28 +59,27 @@ impl Diagram {
         let point = self.points.swap_remove(index);
 
         if self.diagram.len() < 1 {
+            println!("point being put in is: {point:?}");
             self.diagram.push(point);
+            println!("\n\n_________________________________________________________________________________\n");
             return;
         }
         let last_point_put_in = &point;
-        let correction_term = 1e-12;
-        let mut i = 0;
+        let correction_term = 1e-11;
+        let mut point_counter = 0;
         self.diagram.sort_by(|point1: &Vec<f64>, point2| Diagram::distance_squared(point1, last_point_put_in).partial_cmp(&Diagram::distance_squared(point2, last_point_put_in)).unwrap());
         for point in self.diagram.iter() {
-            println!("distance to point{} is: {}", i, Diagram::distance_squared(point, last_point_put_in));
-            i += 1;
+            println!("point is: {point:?}\ndistance to point{} is: {}", point_counter, Diagram::distance_squared(point, last_point_put_in));
+            point_counter += 1;
         }
-        println!("point being put in is : {point:?}");
-        for point in self.diagram.iter() {
+        println!("point being put in is: {point:?}");
+        for other_point_in_the_diagram in self.diagram.iter() {
                 // Variable names are for the clarity of math first 
-            println!("point considered: {point:?}");
-            let BA = vec![point[0] - last_point_put_in[0], point[1] - last_point_put_in[1]]; // vector
-            // let d = Diagram::vec_len_squared(&BA);
+            println!("point considered: {other_point_in_the_diagram:?}");
+            let BA = vec![other_point_in_the_diagram[0] - last_point_put_in[0], other_point_in_the_diagram[1] - last_point_put_in[1]]; // vector
             let M = vec![last_point_put_in[0] + 0.5 * BA[0], last_point_put_in[1] + 0.5 * BA[1]]; // midpoint
             let MO = vec![BA[1] / (Diagram::vec_len(&BA)), -BA[0] / (Diagram::vec_len(&BA))]; // turned pi/2 rad, rescaled to a unit vector.
-            // let number_of_points = self.diagram.len();
             let O1O2 = vec![M[0] + MO[0], M[1] + MO[1], M[0] - MO[0], M[1] - MO[1]]; // bisector
-            // self.diagram.swap(index_of_closest_point, number_of_points - 2);
             let ndy = O1O2[1] - O1O2[3];
             let dx = O1O2[2] - O1O2[0];
             let T_i = vec![0.0, O1O2[3] + (O1O2[2] * ndy) / dx]; // y intercept;
@@ -100,107 +104,169 @@ impl Diagram {
             else {
                 E = &U_i;
             }
-            // up to this works
-            let mut SE = vec![S[0], S[1], E[0], E[1], M[0], M[1]];
+            let mut SE = vec![S[0], S[1], E[0], E[1], M[0], M[1], other_point_in_the_diagram[0], other_point_in_the_diagram[1]];
+            let mut i = 0;
+            let mut remove_indeces: Vec<usize> = vec![];
+            let mut line_to_be_adjusted_indeces_and_intercepts: Vec<(usize,[f64; 2])> = vec![]; // (index, [x intercept, y intercept])
             println!("SE is: {SE:?}");
+            let side = true;
             for line in self.lines.iter() { // systematically cutting off the bisector at the intectpts with other lines
-                println!("line intercected is: {line:?}");
+                println!("line intercected is: {line:?}\nindex is {i}");
                 if SE[0] == SE[2] && SE[1] == SE[3] {
+                    i = 0;
+                    line_to_be_adjusted_indeces_and_intercepts.clear();
                     break;
                 }
                 let ndy = SE[1] - SE[3];
                 let dx = SE[2] - SE[0];
                 let lndy = line[1] - line[3];
                 let ldx = line[2] - line[0];
-                let x_I = (dx * (SE[3] - line[3]) + ndy * SE[2] - line[2] * lndy * dx / ldx) / (ndy - lndy * dx / ldx); // intercept between the new line and one of the existing ones
-                let y_I = SE[3] + ndy * (SE[2] - x_I) / dx; // y component of the intercept
-                println!("x_I is {x_I}");
-                println!("y_I is {y_I}");
-                let x_Ml = x_I;
-                let y_Ml = y_I;
+                let x_i = (dx * (SE[3] - line[3]) + ndy * SE[2] - line[2] * lndy * dx / ldx) / (ndy - lndy * dx / ldx); // intercept between the new line and one of the existing ones
+                let y_i = SE[3] + ndy * (SE[2] - x_i) / dx; // y component of the intercept
+                println!("x_I is {x_i}");
+                println!("y_I is {y_i}");
+                if (SE[0] - x_i).abs() < correction_term || (SE[2] - x_i).abs() < correction_term {
+                    i += 1;
+                    continue;
+                }
+                let x_Ml = x_i;
+                let y_Ml = y_i;
                 let x_p = x_Ml + (last_point_put_in[1] - line[5]);
                 let y_p = y_Ml - (last_point_put_in[0] - line[4]);
-                let dy = y_p - y_Ml;
-                let dx = x_p - x_Ml;
+                let dye = y_p - y_Ml;
+                let dxe = x_p - x_Ml;
                 // println!("line intercected is {line:?}");
-                let line_eqn = |x:f64, y:f64| (y - y_Ml) * dx - (x - x_Ml) * dy < 0.0;
-                let mut S_n = vec![SE[0], SE[1]];
+                println!("{}, {}, {}, {}", x_Ml, y_Ml, dxe, dye);
+                let line_eqn = |x:f64, y:f64| (y - y_Ml) * dxe - (x - x_Ml) * dye < 0.0;
+                let mut S_n = [SE[0], SE[1]];
+                println!("the start is on {} side\nthe point is on the {} side", line_eqn(S_n[0], S_n[1]), line_eqn(last_point_put_in[0], last_point_put_in[1]));
                 if line_eqn(S_n[0], S_n[1]) != line_eqn(last_point_put_in[0], last_point_put_in[1]) {
-                    S_n = vec![SE[2], SE[3]];
+                    S_n = [SE[2], SE[3]];
+                    // let side = false;
                 }
-                let mut x_E_n = x_I;
-                let mut y_E_n = y_I;
-                if ((x_I - line[0]).abs() + (x_I - line[2]).abs() - ldx.abs()).abs() > correction_term 
-                || ((x_I - SE[0]).abs() + (x_I - SE[2]).abs() - dx.abs()).abs() > correction_term {
-                    x_E_n = E[0];
-                    y_E_n = E[1];
+                let mut x_E_n = x_i;
+                let mut y_E_n = y_i;
+                println!("{}, {}, {}, {}\n{}, {}, {}, {}", (x_i - line[0]).abs(), (x_i - line[2]).abs(), ldx.abs(), ((x_i - line[0]).abs() + (x_i - line[2]).abs() - ldx.abs()).abs()
+            , (x_i - SE[0]).abs(), (x_i - SE[2]).abs(), dx.abs(), ((x_i - SE[0]).abs() + (x_i - SE[2]).abs() - dx.abs()).abs());
+                let on_se = ((x_i - SE[0]).abs() + (x_i - SE[2]).abs() - dx.abs()).abs() < correction_term;
+                let on_the_line = ((x_i - line[0]).abs() + (x_i - line[2]).abs() - ldx.abs()).abs() < correction_term;
+                println!("ont the line: {}, se: {}", on_the_line, on_se);
+                if !on_the_line && !on_se {
+                    // println!("not on th");
+                    if ((line[2] - line[0]) * (line[4] - point[0]) + (line[3] - line[1]) * (line[5] - point[1])).abs() < correction_term {
+                        if side {
+                            x_E_n = SE[2];
+                            y_E_n = SE[3];
+                        }
+                        else {
+                            x_E_n = SE[0];
+                            y_E_n = SE[1];
+                        }
+                    }
+                    else {
+                        i += 1;
+                        continue;
+                    }
                 }
+                else if on_the_line && !on_se {
+                    i += 1;
+                    continue;
+                }
+                else if !on_the_line && on_se {
+                    if ((line[2] - line[0]) * (line[4] - last_point_put_in[0]) + (line[3] - line[1]) * (line[5] - last_point_put_in[1])).abs() < correction_term {
+                        x_E_n = S_n[0];
+                        y_E_n = S_n[1];
+                    }
+                    else if ((line[2] - line[0]) * (line[4] - point[0]) + (line[3] - line[1]) * (line[5] - point[1])).abs() < correction_term {
+                        line_to_be_adjusted_indeces_and_intercepts.push((i, [x_i, y_i]));
+                        i += 1;
+                        continue;
+                    }
+                    else {
+                        i += 1;
+                        continue;
+                    }
+                }
+                line_to_be_adjusted_indeces_and_intercepts.push((i, [x_i, y_i]));
                 println!("x_E_n is: {x_E_n}\ny_E_n is: {y_E_n}");
-                // if ()
-                SE = vec![S_n[0], S_n[1], x_E_n, y_E_n, M[0], M[1]];
+                SE[0] = S_n[0];
+                SE[1] = S_n[1];
+                SE[2] = x_E_n;
+                SE[3] = y_E_n;
+                // SE = vec![*S_n[0], *S_n[1], x_E_n, y_E_n, M[0], M[1]];
+
                 println!("SE is: {SE:?}");
-            }
-            // at this point, there should be at most two intercepts lying on the line being drawn: the endpoints
-            let mut i = 0;
-            let mut remove_index: isize = -1;
-            for line in self.lines.iter_mut() { // adjusting the other lines
-                println!("line adjusted is: {line:?}");
-                // let x_op = point[0] + 2.0 * line[4];
-                // let y_op = point[1] + 2.0 * line[5];
-                // if ((point[0] - last_point_put_in[0]).abs() + (x_op - last_point_put_in[0]).abs() - 2.0 * line[4].abs()).abs() < correction_term 
-                // && ((point[1] - last_point_put_in[1]).abs() + (y_op - last_point_put_in[1]).abs() - 2.0 * line[5].abs()).abs() < correction_term {
-                //     remove_index = i;
-                //     continue;
-                // }
-                let x_I; // x component of the intercept
-                let y_I;
-                if ((SE[0] - line[0]) * (line[3] - line[1]) - (line[2] - line[0]) * (SE[1] - line[1])).abs() < correction_term { // if the starting point of the new line lies on the line
-                    x_I = SE[0]; // set the x component of the intercept to the x component of the starting point of the old line
-                    y_I = SE[1];
-                }
-                else if ((SE[2] - line[0]) * (line[3] - line[1]) - (line[2] - line[0]) * (SE[3] - line[1])).abs() < correction_term { // same, but for the ending point of the old line
-                    x_I = SE[2];
-                    y_I = SE[3];
-                }
-                else {
-                    continue; // if there is no intercept, skip the line
-                }
-                if ((line[0] - x_I).abs() + (line[2] - x_I).abs() - (line[0] - line[2]).abs()).abs() > correction_term {
-                    // let D = Diagram::distance_squared(&vec![line[5], line[6]], );
-                    continue; // if the intecept is not on the line segment, skip.
-                }
-                // if SE[0] == line[0]
-                let x_Ml = x_I;
-                let y_Ml = y_I;
-                let x_p = x_Ml + (last_point_put_in[1] - line[5]);
-                let y_p = y_Ml - (last_point_put_in[0] - line[4]);
-                let dy = y_p - y_Ml;
-                let dx = x_p - x_Ml;
-                let line_eqn = |x:f64, y:f64| {(y - y_Ml) * dx - (x - x_Ml) * dy < 0.0};
-                let mut S_nl = vec![line[0], line[1]];
-                if line_eqn(last_point_put_in[0],last_point_put_in[1]) == line_eqn(S_nl[0], S_nl[1]) {
-                    S_nl = vec![line[2], line[3]];
-                }
-                *line = vec![S_nl[0], S_nl[1], x_I, y_I, x_Ml, x_Ml];
-                println!("new line is: {line:?}");
                 i += 1;
             }
-
-            // if SE[2] >= 0.0 - correction_term && SE[2] <= 1.0 + correction_term && SE[3] >= 0.0 - correction_term && SE[3] <= 1.0 + correction_term && SE[0] >= 0.0 - correction_term && SE[0] <= 1.0 + correction_term && SE[1] >= 0.0 - correction_term && SE[1] <= 1.0 + correction_term {
-            //     self.lines.push(SE);
-            // }
-            if remove_index != -1 {
-                self.lines.swap_remove(remove_index as usize);
+            if SE[0] == SE[2] && SE[1] == SE[3] {
+                line_to_be_adjusted_indeces_and_intercepts.clear();
             }
-            if SE[0] != SE[2] && SE[1] != SE[3] {
+            println!("\nadjusting lines");
+            for index in 0..line_to_be_adjusted_indeces_and_intercepts.len() {
+                let line_to_be_adjusted = &mut self.lines[line_to_be_adjusted_indeces_and_intercepts[index].0];
+                println!("line adjusted is: {line_to_be_adjusted:?}");
+                let x_I = line_to_be_adjusted_indeces_and_intercepts[index].1[0];
+                let y_I = line_to_be_adjusted_indeces_and_intercepts[index].1[1];
+                println!("x_I is: {x_I}\ny_I is: {y_I}");
+                let intercept_on_the_line = ((line_to_be_adjusted[0] - x_I).abs() + (line_to_be_adjusted[2] - x_I).abs() - (line_to_be_adjusted[2] - line_to_be_adjusted[0]).abs()).abs() < correction_term;
+                let intercept_on_se = ((SE[0] - x_I).abs() + (SE[2] - x_I).abs() - (SE[2] - SE[0]).abs()) < correction_term;
+                if (x_I - line_to_be_adjusted[0]).abs() < correction_term || (x_I - line_to_be_adjusted[2]).abs() < correction_term{
+                    continue;
+                }
+                let distance_squared_from_line_start_to_its_point = (line_to_be_adjusted[0] - line_to_be_adjusted[6]).powi(2) + (line_to_be_adjusted[1] - line_to_be_adjusted[7]).powi(2);
+                let distance_squared_from_line_end_to_its_point = (line_to_be_adjusted[2] - line_to_be_adjusted[6]).powi(2) + (line_to_be_adjusted[3] - line_to_be_adjusted[7]).powi(2);
+                let distance_squared_from_line_start_to_new_point = (line_to_be_adjusted[0] - last_point_put_in[0]).powi(2) + (line_to_be_adjusted[1] - last_point_put_in[1]).powi(2);
+                let distance_squared_from_line_end_to_new_point = (line_to_be_adjusted[2] - last_point_put_in[0]).powi(2) + (line_to_be_adjusted[3] - last_point_put_in[1]).powi(2);
+                if intercept_on_the_line && intercept_on_se {
+                    if distance_squared_from_line_end_to_its_point - distance_squared_from_line_end_to_new_point > correction_term {
+                        line_to_be_adjusted[2] = x_I;
+                        line_to_be_adjusted[3] = y_I;
+                    }
+                    else if distance_squared_from_line_start_to_its_point - distance_squared_from_line_start_to_new_point > correction_term  {
+                        line_to_be_adjusted[0] = x_I;
+                        line_to_be_adjusted[1] = y_I;                        
+                    }
+                }
+                println!("new line is {line_to_be_adjusted:?}");
+            }
+            remove_indeces.sort_unstable();
+            remove_indeces.dedup();
+            for j in 0..remove_indeces.len() {
+                self.lines.remove(remove_indeces[j]);
+                remove_indeces.iter_mut().enumerate().for_each(|(i, index): (usize, &mut usize)| if i > j {*index -= 1});
+            }
+            // self.lines = self.lines.iter().enumerate().filter(|(i, _): &(usize, &Vec<f64>) | remove_indeces.contains(i)).map(|(_, line): (usize, &Vec<f64>)| *line).collect();
+            if (SE[0] - SE[2]).abs() > correction_term && (SE[1] - SE[3]).abs() > correction_term {
                 self.lines.push(SE);
             }
+            println!("---------------------------------------");
+        }
+        let mut remove_indeces: Vec<usize> = vec![];
+        let mut i = 0;
+        println!("looking for leftovers");
+        for line in self.lines.iter() {
+            let distance_squared_line_start_to_its_point = (line[6] - line[0]).powi(2) + (line[7] - line[1]).powi(2);
+            let distance_squared_line_start_to_point_added = (line[0] - last_point_put_in[0]).powi(2) + (line[1] - last_point_put_in[1]).powi(2);
+            if  distance_squared_line_start_to_its_point - distance_squared_line_start_to_point_added > correction_term {
+                remove_indeces.push(i);
+                println!("distance to the line's point is: {} and to the point being put in is: {}", distance_squared_line_start_to_its_point, distance_squared_line_start_to_point_added);
+                println!("adding {line:?} to the removal indices")
+            }
+            i += 1;
+        }
+        remove_indeces.sort_unstable();
+        remove_indeces.dedup();
+        for j in 0..remove_indeces.len() {
+            self.lines.remove(remove_indeces[j]);
+            remove_indeces.iter_mut().enumerate().for_each(|(i, index): (usize, &mut usize)| if i > j {*index -= 1});
         }
         self.diagram.push(point);
+        println!("\n\n_________________________________________________________________________________\n");
     }
     pub fn calculate_perimeters(&self) -> f64 {
         0.0
     }
+    
     fn distance_squared(point1: &Vec<f64>, point2: &Vec<f64>) -> f64{
         (point1[0] - point2[0]).powi(2) + (point1[1] - point2[1]).powi(2)
     }
@@ -210,63 +276,6 @@ impl Diagram {
     fn vec_len_squared(vector: &Vec<f64>) -> f64 {
         vector[0].powi(2) + vector[1].powi(2)
     }
-}
-pub fn count_average_perimeters (points: &Vec<(f64, f64)>) -> f64 {
-    let mut rng = thread_rng();
-    let indices = sample(&mut rng, points.len(), points.len());
-    let mut diagram: Vec<Vec<(f64,f64)>> = vec![vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), points[indices.index(0)]]];
-    let mut perimeter = 0.0;
-    let mut points_placed: Vec<(f64, f64)> = vec![points[indices.index(0)]];
-    for index in indices.into_iter().skip(1) {
-        let mut region_index = 0;
-        let mut region_changed: &Vec<(f64,f64)> = &vec![];
-        let mut closest_point_array: Vec<(f64, f64)> = vec![]; // the value doesn't matter, it'll get owerwritten, it's just here so compiler does not complain
-        let mut distance = 2.0;
-        let mut breakpoints: Vec<(f64, f64)> = vec![];
-        for &point in points_placed.iter().skip(1) {
-            if (point.1 - points[index].1).powi(2) + (point.0 - points[index].0) < distance {
-                distance = (point.1 - points[index].1).powi(2) + (point.0 - points[index].0);
-                closest_point_array.push(point);
-            }
-        }
-        for (index, region) in diagram.iter().skip(1).enumerate() {
-            if *region.last().expect("must exist") == closest_point_array[0] {
-                region_changed = region;
-                region_index = index;
-                break;
-            }
-        }
-        for closest_point in closest_point_array.into_iter().rev() {
-            let u = (closest_point.0 - points[index].0, closest_point.1 - points[index].1);
-            let midpoint = (points[index].0 + u.0 / 2.0, points[index].1 + u.1 / 2.0);
-            // let v = (u.1, -1.0 * u.0);
-            let k = -1.0 * u.1 / u.0;
-            let b = midpoint.1 - k * midpoint.0;
-            let sides = region_changed.len() - 1;
-            for (index, point) in region_changed.iter().take(sides).enumerate() {
-                let next = (index + 1) % sides;
-                let k1 = (point.0 - midpoint.0) / (point.1 - midpoint.1);
-                let next_point = region_changed[next];
-                let k2 = (next_point.0 - midpoint.0) / (next_point.1 - midpoint.1);
-                if k < k1 && k > k2 {
-                    breakpoints.push((((point.1 - k * point.0) - b) / (k - ((point.0 - next_point.0) / (point.1 - next_point.1))), k * (((point.1 - k * point.0) - b) / (k - ((point.0 - next_point.0) / (point.1 - next_point.1)))) + b));
-                }
-            }
-        }
-        
-        points_placed.push(points[index]);
-        diagram[region_index].push(points[index]);
-        perimeter += get_perimeter(diagram.last().expect("always exists"));
-    }
-    perimeter
-}
-
-pub fn get_perimeter(region: &Vec<(f64, f64)>) -> f64 {
-    let mut perimeter = 0.0;
-    for i in 1..(region.len() - 1) {
-        perimeter += ((region[i - 1].1 - region[i].1).powi(2) + (region[i - 1].0 - region[i].0).powi(2)).sqrt();
-    }
-    perimeter
 }
 
 // macro_rules! div {
